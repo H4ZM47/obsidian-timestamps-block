@@ -1,0 +1,9 @@
+{
+  "id": "timestamps-block",
+  "name": "Timestamps Block",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Create timestamped log blocks in your notes with auto-timestamping on new lines",
+  "author": "H4ZM47",
+  "isDesktopOnly": false
+}
