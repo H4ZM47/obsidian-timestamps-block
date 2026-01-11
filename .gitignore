@@ -1,0 +1,26 @@
+# Build output
+main.js
+*.js.map
+
+# Dependencies
+node_modules/
+
+# npm
+.npm/
+package-lock.json
+
+# Obsidian
+data.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+*.log

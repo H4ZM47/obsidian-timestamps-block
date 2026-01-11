@@ -1,0 +1,39 @@
+/* Timestamps Block Plugin Styles */
+
+/* Settings preview styling */
+.timestamp-preview-container {
+  margin: 1em 0;
+  padding: 0.5em;
+  background-color: var(--background-secondary);
+  border-radius: 4px;
+}
+
+.timestamp-preview {
+  font-family: var(--font-monospace);
+  color: var(--text-accent);
+}
+
+/* Help section styling */
+.timestamp-help {
+  margin-top: 1em;
+  padding: 1em;
+  background-color: var(--background-secondary);
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.timestamp-help ul {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.timestamp-help li {
+  margin: 0.25em 0;
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+}
+
+.timestamp-help p {
+  margin: 0.5em 0;
+  font-weight: 600;
+}
