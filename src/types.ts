@@ -13,7 +13,13 @@ export interface TimestampBlockSettings {
   /** How to identify timestamp blocks */
   blockIdentifier: BlockIdentifier;
 
-  /** Regex pattern for matching headers (case-insensitive) */
+  /** Simple header text to match (e.g., "## Log") */
+  headerText: string;
+
+  /** Whether to use advanced regex pattern instead of simple header text */
+  useAdvancedHeaderPattern: boolean;
+
+  /** Regex pattern for matching headers (case-insensitive) - used when useAdvancedHeaderPattern is true */
   headerPattern: string;
 
   /** Language identifier for code fences */
@@ -38,6 +44,8 @@ export interface TimestampBlockSettings {
 export const DEFAULT_SETTINGS: TimestampBlockSettings = {
   timestampFormat: 'YYYY-MM-DD HH:mm',
   blockIdentifier: 'header',
+  headerText: '## Log',
+  useAdvancedHeaderPattern: false,
   headerPattern: '^#{1,6}\\s*(log|journal|notes|timestamps?)\\s*$',
   fenceLanguage: 'timestamp-log',
   timestampPrefix: '[',

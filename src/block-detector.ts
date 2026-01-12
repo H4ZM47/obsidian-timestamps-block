@@ -40,18 +40,28 @@ export class BlockDetector {
   }
 
   /**
+   * Check if a line matches the configured header pattern
+   */
+  private matchesHeaderPattern(lineText: string): boolean {
+    if (this.settings.useAdvancedHeaderPattern) {
+      // Use regex pattern
+      try {
+        const headerRegex = new RegExp(this.settings.headerPattern, 'i');
+        return headerRegex.test(lineText);
+      } catch (e) {
+        // Invalid regex, fall back to simple matching
+        return lineText.trim().toLowerCase() === this.settings.headerText.trim().toLowerCase();
+      }
+    } else {
+      // Simple text matching (case-insensitive)
+      return lineText.trim().toLowerCase() === this.settings.headerText.trim().toLowerCase();
+    }
+  }
+
+  /**
    * Check if the current line is under a timestamp header
    */
   private isUnderTimestampHeader(editor: Editor, line: number): boolean {
-    // Create regex from pattern - using case-insensitive flag
-    let headerRegex: RegExp;
-    try {
-      headerRegex = new RegExp(this.settings.headerPattern, 'i');
-    } catch (e) {
-      // Invalid regex, use default
-      headerRegex = /^#{1,6}\s*(log|journal|notes|timestamps?)\s*$/i;
-    }
-
     // Generic header pattern to detect any header
     const anyHeaderRegex = /^#{1,6}\s/;
 
@@ -62,7 +72,7 @@ export class BlockDetector {
       // Check if this is any header
       if (anyHeaderRegex.test(lineText)) {
         // If it matches our timestamp header pattern, we're in a block
-        if (headerRegex.test(lineText)) {
+        if (this.matchesHeaderPattern(lineText)) {
           return true;
         }
         // If it's a different header, we've left the potential timestamp section
@@ -176,13 +186,6 @@ export class BlockDetector {
    * Find boundaries of a header-based block
    */
   private findHeaderBoundaries(editor: Editor, line: number): BlockBoundaries | null {
-    let headerRegex: RegExp;
-    try {
-      headerRegex = new RegExp(this.settings.headerPattern, 'i');
-    } catch (e) {
-      headerRegex = /^#{1,6}\s*(log|journal|notes|timestamps?)\s*$/i;
-    }
-
     const anyHeaderRegex = /^#{1,6}\s/;
     let startLine = -1;
     let headerLevel = 0;
@@ -192,7 +195,7 @@ export class BlockDetector {
       const lineText = editor.getLine(i);
 
       if (anyHeaderRegex.test(lineText)) {
-        if (headerRegex.test(lineText)) {
+        if (this.matchesHeaderPattern(lineText)) {
           startLine = i;
           // Extract header level
           const match = lineText.match(/^(#{1,6})/);

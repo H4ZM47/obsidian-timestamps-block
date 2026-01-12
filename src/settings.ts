@@ -8,6 +8,7 @@ import TimestampBlockPlugin from './main';
 export class TimestampBlockSettingTab extends PluginSettingTab {
   plugin: TimestampBlockPlugin;
   private previewSetting: Setting | null = null;
+  private advancedOpen = false;
 
   constructor(app: App, plugin: TimestampBlockPlugin) {
     super(app, plugin);
@@ -69,7 +70,7 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
       .setName('Detection method')
       .setDesc('How to identify timestamp blocks in your notes')
       .addDropdown(dropdown => dropdown
-        .addOption('header', 'Header-based (## Log)')
+        .addOption('header', 'Header-based')
         .addOption('fence', 'Fence-based (```timestamp-log)')
         .addOption('both', 'Both methods')
         .setValue(this.plugin.settings.blockIdentifier)
@@ -79,20 +80,22 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
           this.display();
         }));
 
+    // Header settings (simplified)
     if (this.plugin.settings.blockIdentifier === 'header' ||
         this.plugin.settings.blockIdentifier === 'both') {
       new Setting(containerEl)
-        .setName('Header pattern')
-        .setDesc('Regex pattern to match headers (case-insensitive)')
+        .setName('Header text')
+        .setDesc('The header that marks a timestamp block (e.g., "## Log")')
         .addText(text => text
-          .setPlaceholder('^#{1,6}\\s*(log|journal)\\s*$')
-          .setValue(this.plugin.settings.headerPattern)
+          .setPlaceholder('## Log')
+          .setValue(this.plugin.settings.headerText)
           .onChange(async (value) => {
-            this.plugin.settings.headerPattern = value;
+            this.plugin.settings.headerText = value;
             await this.plugin.saveSettings();
           }));
     }
 
+    // Fence settings
     if (this.plugin.settings.blockIdentifier === 'fence' ||
         this.plugin.settings.blockIdentifier === 'both') {
       new Setting(containerEl)
@@ -130,12 +133,64 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
+    // Advanced Section (collapsible)
+    this.createAdvancedSection(containerEl);
+
     // Format Reference Section
     containerEl.createEl('h2', { text: 'Format Reference' });
 
     new Setting(containerEl)
       .setName('Common format tokens')
       .setDesc(this.createFormatReferenceFragment());
+  }
+
+  private createAdvancedSection(containerEl: HTMLElement): void {
+    const advancedHeader = containerEl.createEl('h2', {
+      text: this.advancedOpen ? '▼ Advanced' : '▶ Advanced',
+      cls: 'timestamp-advanced-header'
+    });
+    advancedHeader.style.cursor = 'pointer';
+    advancedHeader.style.userSelect = 'none';
+
+    const advancedContainer = containerEl.createDiv({ cls: 'timestamp-advanced-container' });
+    advancedContainer.style.display = this.advancedOpen ? 'block' : 'none';
+
+    advancedHeader.addEventListener('click', () => {
+      this.advancedOpen = !this.advancedOpen;
+      advancedHeader.textContent = this.advancedOpen ? '▼ Advanced' : '▶ Advanced';
+      advancedContainer.style.display = this.advancedOpen ? 'block' : 'none';
+    });
+
+    // Advanced header matching (regex)
+    if (this.plugin.settings.blockIdentifier === 'header' ||
+        this.plugin.settings.blockIdentifier === 'both') {
+
+      new Setting(advancedContainer)
+        .setName('Use regex for header matching')
+        .setDesc('Enable to match multiple headers with a regular expression pattern')
+        .addToggle(toggle => toggle
+          .setValue(this.plugin.settings.useAdvancedHeaderPattern)
+          .onChange(async (value) => {
+            this.plugin.settings.useAdvancedHeaderPattern = value;
+            await this.plugin.saveSettings();
+            this.display();
+            // Re-open advanced section after refresh
+            this.advancedOpen = true;
+          }));
+
+      if (this.plugin.settings.useAdvancedHeaderPattern) {
+        new Setting(advancedContainer)
+          .setName('Header regex pattern')
+          .setDesc('Case-insensitive regex to match headers (e.g., ^#{1,6}\\s*(log|journal)\\s*$)')
+          .addText(text => text
+            .setPlaceholder('^#{1,6}\\s*(log|journal)\\s*$')
+            .setValue(this.plugin.settings.headerPattern)
+            .onChange(async (value) => {
+              this.plugin.settings.headerPattern = value;
+              await this.plugin.saveSettings();
+            }));
+      }
+    }
   }
 
   private createPreviewFragment(): DocumentFragment {

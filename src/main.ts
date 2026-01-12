@@ -245,7 +245,8 @@ export default class TimestampBlockPlugin extends Plugin {
    */
   private createHeaderBlockTemplate(): string {
     const timestamp = this.timestampService.createFullTimestamp();
-    return `\n## Log\n${timestamp}`;
+    const header = this.settings.headerText || '## Log';
+    return `\n${header}\n${timestamp}`;
   }
 
   /**
