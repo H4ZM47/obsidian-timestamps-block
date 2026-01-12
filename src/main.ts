@@ -5,6 +5,8 @@ import {
   Notice,
   Plugin
 } from 'obsidian';
+import { Transaction } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
 import {
   TimestampBlockSettings,
   DEFAULT_SETTINGS
@@ -132,112 +134,106 @@ export default class TimestampBlockPlugin extends Plugin {
   }
 
   /**
-   * Register editor events for auto-timestamping
+   * Register editor events for auto-timestamping using CodeMirror 6 extensions
+   * This approach works reliably on both desktop and mobile (iOS/Android)
    */
   private registerEditorEvents(): void {
-    // Handle Enter key for auto-timestamping
-    this.registerDomEvent(document, 'keydown', (evt: KeyboardEvent) => {
-      // Only handle Enter key
-      if (evt.key !== 'Enter' || evt.isComposing) {
-        return;
-      }
+    // Use CodeMirror 6 transaction filter to detect newline insertions
+    const newlineExtension = EditorView.updateListener.of((update) => {
+      if (!update.docChanged) return;
+      if (!this.settings.autoTimestamp) return;
 
-      // Check if auto-timestamp is enabled
-      if (!this.settings.autoTimestamp) {
-        return;
-      }
+      // Check if a newline was inserted
+      let newlineInserted = false;
+      let insertionLine = -1;
 
-      // Get active editor
+      update.transactions.forEach((tr: Transaction) => {
+        if (!tr.docChanged) return;
+
+        tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+          const insertedText = inserted.toString();
+          if (insertedText.includes('\n')) {
+            newlineInserted = true;
+            // Get the line number after the insertion
+            const pos = fromB + insertedText.length;
+            insertionLine = update.state.doc.lineAt(pos).number - 1; // 0-indexed
+          }
+        });
+      });
+
+      if (!newlineInserted || insertionLine < 0) return;
+
+      // Get the Obsidian editor
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!view) {
-        return;
-      }
+      if (!view) return;
 
       const editor = view.editor;
-      const cursor = editor.getCursor();
 
-      // Check if we're in a timestamp block
-      if (!this.blockDetector.isInTimestampBlock(editor, cursor.line)) {
+      // Check if the PREVIOUS line (where we pressed Enter) was in a timestamp block
+      const previousLine = insertionLine - 1;
+      if (previousLine < 0) return;
+
+      if (!this.blockDetector.isInTimestampBlock(editor, previousLine)) {
         return;
       }
 
-      // Schedule timestamp insertion after the new line is created
-      // Using setTimeout to let the Enter key create the new line first
-      setTimeout(() => {
-        this.insertTimestampOnNewLine(editor);
-      }, 0);
+      // Also verify the new line is still in the block
+      if (!this.blockDetector.isInTimestampBlock(editor, insertionLine)) {
+        return;
+      }
+
+      // Use requestAnimationFrame to ensure the editor state is fully updated
+      requestAnimationFrame(() => {
+        this.insertTimestampOnLine(editor, insertionLine);
+      });
     });
+
+    this.registerEditorExtension(newlineExtension);
   }
 
   /**
-   * Insert timestamp on the current (new) line
+   * Insert timestamp on a specific line
    */
-  private insertTimestampOnNewLine(editor: Editor): void {
-    const cursor = editor.getCursor();
-    const currentLine = editor.getLine(cursor.line);
+  private insertTimestampOnLine(editor: Editor, lineNumber: number): void {
+    const currentLine = editor.getLine(lineNumber);
+    if (currentLine === undefined) return;
 
-    // Check if line is empty or only whitespace
+    // Check if line already has a timestamp
+    if (this.timestampService.lineHasTimestamp(currentLine)) {
+      return;
+    }
+
     const isEmptyLine = currentLine.trim() === '';
-
-    if (isEmptyLine && !this.settings.includeOnEmptyLine) {
-      // Don't add timestamp to empty lines if setting is off
-      // But we still need to add it since the user will type something
-      const timestamp = this.timestampService.createFullTimestamp();
-      const leadingWhitespace = currentLine.match(/^(\s*)/)?.[1] || '';
-
-      editor.setLine(cursor.line, leadingWhitespace + timestamp);
-      editor.setCursor({
-        line: cursor.line,
-        ch: leadingWhitespace.length + timestamp.length
-      });
-      return;
-    }
-
-    // Check if line already has content (user typed fast, or Obsidian added list marker)
-    if (!isEmptyLine) {
-      // Check if it already has a timestamp
-      if (this.timestampService.lineHasTimestamp(currentLine)) {
-        return;
-      }
-
-      // Add timestamp to existing content, preserving list markers
-      const leadingWhitespace = currentLine.match(/^(\s*)/)?.[1] || '';
-      const content = currentLine.trimStart();
-
-      // Check for list markers (-, *, +, or numbered like "1.")
-      const listMarkerMatch = content.match(/^([-*+]|\d+\.)\s*/);
-
-      let timestampedLine: string;
-      if (listMarkerMatch) {
-        // Place timestamp AFTER list marker: "- [time] content"
-        const listMarker = listMarkerMatch[0];
-        const restOfContent = content.slice(listMarker.length);
-        timestampedLine = leadingWhitespace + listMarker +
-          this.timestampService.createTimestampedLine(restOfContent);
-      } else {
-        // No list marker, timestamp goes at start
-        timestampedLine = leadingWhitespace +
-          this.timestampService.createTimestampedLine(content);
-      }
-
-      editor.setLine(cursor.line, timestampedLine);
-
-      // Position cursor at end of timestamp
-      const timestamp = this.timestampService.createFullTimestamp();
-      const cursorPos = timestampedLine.indexOf(timestamp) + timestamp.length;
-      editor.setCursor({ line: cursor.line, ch: cursorPos });
-      return;
-    }
-
-    // Insert timestamp at cursor
-    const timestamp = this.timestampService.createFullTimestamp();
     const leadingWhitespace = currentLine.match(/^(\s*)/)?.[1] || '';
+    const content = currentLine.trimStart();
 
-    editor.setLine(cursor.line, leadingWhitespace + timestamp);
-    editor.setCursor({
-      line: cursor.line,
-      ch: leadingWhitespace.length + timestamp.length
-    });
+    // Check for list markers (-, *, +, or numbered like "1.")
+    const listMarkerMatch = content.match(/^([-*+]|\d+\.)\s*/);
+
+    let timestampedLine: string;
+    let cursorOffset: number;
+
+    if (listMarkerMatch) {
+      // Place timestamp AFTER list marker: "- [time] content"
+      const listMarker = listMarkerMatch[0];
+      const restOfContent = content.slice(listMarker.length);
+      const timestamp = this.timestampService.createFullTimestamp();
+      timestampedLine = leadingWhitespace + listMarker + timestamp + restOfContent;
+      cursorOffset = leadingWhitespace.length + listMarker.length + timestamp.length;
+    } else if (isEmptyLine) {
+      // Empty line - just add timestamp
+      const timestamp = this.timestampService.createFullTimestamp();
+      timestampedLine = leadingWhitespace + timestamp;
+      cursorOffset = leadingWhitespace.length + timestamp.length;
+    } else {
+      // Has content, prepend timestamp
+      const timestamp = this.timestampService.createFullTimestamp();
+      timestampedLine = leadingWhitespace + timestamp + content;
+      cursorOffset = leadingWhitespace.length + timestamp.length;
+    }
+
+    editor.setLine(lineNumber, timestampedLine);
+    editor.setCursor({ line: lineNumber, ch: cursorOffset });
   }
 
   /**
