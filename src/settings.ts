@@ -7,6 +7,7 @@ import TimestampBlockPlugin from './main';
  */
 export class TimestampBlockSettingTab extends PluginSettingTab {
   plugin: TimestampBlockPlugin;
+  private previewSetting: Setting | null = null;
 
   constructor(app: App, plugin: TimestampBlockPlugin) {
     super(app, plugin);
@@ -17,14 +18,12 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Timestamps Block Settings' });
-
     // Timestamp Format Section
-    containerEl.createEl('h3', { text: 'Timestamp Format' });
+    containerEl.createEl('h2', { text: 'Timestamp Format' });
 
     new Setting(containerEl)
-      .setName('Timestamp format')
-      .setDesc('moment.js format string (e.g., YYYY-MM-DD HH:mm)')
+      .setName('Format string')
+      .setDesc('moment.js format (e.g., YYYY-MM-DD HH:mm, HH:mm:ss)')
       .addText(text => text
         .setPlaceholder('YYYY-MM-DD HH:mm')
         .setValue(this.plugin.settings.timestampFormat)
@@ -35,8 +34,8 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Timestamp prefix')
-      .setDesc('Text before the timestamp (e.g., [)')
+      .setName('Prefix')
+      .setDesc('Text before the timestamp')
       .addText(text => text
         .setPlaceholder('[')
         .setValue(this.plugin.settings.timestampPrefix)
@@ -47,8 +46,8 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Timestamp suffix')
-      .setDesc('Text after the timestamp (e.g., ] )')
+      .setName('Suffix')
+      .setDesc('Text after the timestamp')
       .addText(text => text
         .setPlaceholder('] ')
         .setValue(this.plugin.settings.timestampSuffix)
@@ -58,18 +57,17 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
           this.updatePreview();
         }));
 
-    // Preview
-    const previewContainer = containerEl.createDiv({ cls: 'timestamp-preview-container' });
-    previewContainer.createEl('strong', { text: 'Preview: ' });
-    this.previewEl = previewContainer.createSpan({ cls: 'timestamp-preview' });
-    this.updatePreview();
+    // Preview as a proper Setting component
+    this.previewSetting = new Setting(containerEl)
+      .setName('Preview')
+      .setDesc(this.createPreviewFragment());
 
     // Block Detection Section
-    containerEl.createEl('h3', { text: 'Block Detection' });
+    containerEl.createEl('h2', { text: 'Block Detection' });
 
     new Setting(containerEl)
-      .setName('Block identifier')
-      .setDesc('How to identify timestamp blocks')
+      .setName('Detection method')
+      .setDesc('How to identify timestamp blocks in your notes')
       .addDropdown(dropdown => dropdown
         .addOption('header', 'Header-based (## Log)')
         .addOption('fence', 'Fence-based (```timestamp-log)')
@@ -78,10 +76,9 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
         .onChange(async (value: BlockIdentifier) => {
           this.plugin.settings.blockIdentifier = value;
           await this.plugin.saveSettings();
-          this.display(); // Refresh to show/hide relevant options
+          this.display();
         }));
 
-    // Header settings
     if (this.plugin.settings.blockIdentifier === 'header' ||
         this.plugin.settings.blockIdentifier === 'both') {
       new Setting(containerEl)
@@ -96,7 +93,6 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
           }));
     }
 
-    // Fence settings
     if (this.plugin.settings.blockIdentifier === 'fence' ||
         this.plugin.settings.blockIdentifier === 'both') {
       new Setting(containerEl)
@@ -112,7 +108,7 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
     }
 
     // Behavior Section
-    containerEl.createEl('h3', { text: 'Behavior' });
+    containerEl.createEl('h2', { text: 'Behavior' });
 
     new Setting(containerEl)
       .setName('Auto-timestamp')
@@ -134,47 +130,60 @@ export class TimestampBlockSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
-    // Help Section
-    containerEl.createEl('h3', { text: 'Help' });
+    // Format Reference Section
+    containerEl.createEl('h2', { text: 'Format Reference' });
 
-    const helpDiv = containerEl.createDiv({ cls: 'timestamp-help' });
-    helpDiv.createEl('p', {
-      text: 'Common moment.js format tokens:'
-    });
-
-    const formatList = helpDiv.createEl('ul');
-    const formats = [
-      'YYYY - 4-digit year (2024)',
-      'MM - 2-digit month (01-12)',
-      'DD - 2-digit day (01-31)',
-      'HH - 24-hour (00-23)',
-      'mm - Minutes (00-59)',
-      'ss - Seconds (00-59)',
-      'ddd - Short day name (Mon)',
-      'dddd - Full day name (Monday)',
-    ];
-    formats.forEach(f => formatList.createEl('li', { text: f }));
-
-    helpDiv.createEl('p', {
-      text: 'Example formats:'
-    });
-
-    const exampleList = helpDiv.createEl('ul');
-    const examples = [
-      'YYYY-MM-DD HH:mm - 2024-01-15 14:30',
-      'HH:mm:ss - 14:30:45',
-      'ddd MMM D, YYYY - Mon Jan 15, 2024',
-      'YYYY/MM/DD - 2024/01/15',
-    ];
-    examples.forEach(e => exampleList.createEl('li', { text: e }));
+    new Setting(containerEl)
+      .setName('Common format tokens')
+      .setDesc(this.createFormatReferenceFragment());
   }
 
-  private previewEl: HTMLElement | null = null;
+  private createPreviewFragment(): DocumentFragment {
+    const frag = document.createDocumentFragment();
+    const preview = this.plugin.timestampService.getFormatPreview();
+
+    const wrapper = frag.createEl('div', { cls: 'setting-item-description' });
+
+    // Standard line preview
+    const standardRow = wrapper.createEl('div');
+    standardRow.createEl('span', { text: 'Standard: ' });
+    standardRow.createEl('code', { text: preview, cls: 'timestamp-preview-code' });
+
+    // List context preview
+    const listRow = wrapper.createEl('div');
+    listRow.createEl('span', { text: 'In a list: ' });
+    listRow.createEl('code', { text: '- ' + preview, cls: 'timestamp-preview-code' });
+
+    return frag;
+  }
+
+  private createFormatReferenceFragment(): DocumentFragment {
+    const frag = document.createDocumentFragment();
+
+    const tokens = [
+      ['YYYY', '4-digit year'],
+      ['MM', '2-digit month'],
+      ['DD', '2-digit day'],
+      ['HH', '24-hour'],
+      ['mm', 'minutes'],
+      ['ss', 'seconds'],
+      ['ddd', 'short day (Mon)'],
+    ];
+
+    const wrapper = frag.createEl('div', { cls: 'timestamp-format-reference' });
+    tokens.forEach(([token, desc]) => {
+      const item = wrapper.createEl('span', { cls: 'timestamp-format-token' });
+      item.createEl('code', { text: token });
+      item.createEl('span', { text: ` ${desc}` });
+      wrapper.createEl('span', { text: ' · ' });
+    });
+
+    return frag;
+  }
 
   private updatePreview(): void {
-    if (this.previewEl) {
-      const preview = this.plugin.timestampService.getFormatPreview();
-      this.previewEl.setText(preview);
+    if (this.previewSetting) {
+      this.previewSetting.setDesc(this.createPreviewFragment());
     }
   }
 }

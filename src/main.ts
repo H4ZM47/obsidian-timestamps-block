@@ -193,20 +193,39 @@ export default class TimestampBlockPlugin extends Plugin {
       return;
     }
 
-    // Check if line already has content (user typed fast)
+    // Check if line already has content (user typed fast, or Obsidian added list marker)
     if (!isEmptyLine) {
       // Check if it already has a timestamp
       if (this.timestampService.lineHasTimestamp(currentLine)) {
         return;
       }
 
-      // Add timestamp to existing content
+      // Add timestamp to existing content, preserving list markers
       const leadingWhitespace = currentLine.match(/^(\s*)/)?.[1] || '';
       const content = currentLine.trimStart();
-      const timestampedLine = leadingWhitespace +
-        this.timestampService.createTimestampedLine(content);
+
+      // Check for list markers (-, *, +, or numbered like "1.")
+      const listMarkerMatch = content.match(/^([-*+]|\d+\.)\s*/);
+
+      let timestampedLine: string;
+      if (listMarkerMatch) {
+        // Place timestamp AFTER list marker: "- [time] content"
+        const listMarker = listMarkerMatch[0];
+        const restOfContent = content.slice(listMarker.length);
+        timestampedLine = leadingWhitespace + listMarker +
+          this.timestampService.createTimestampedLine(restOfContent);
+      } else {
+        // No list marker, timestamp goes at start
+        timestampedLine = leadingWhitespace +
+          this.timestampService.createTimestampedLine(content);
+      }
 
       editor.setLine(cursor.line, timestampedLine);
+
+      // Position cursor at end of timestamp
+      const timestamp = this.timestampService.createFullTimestamp();
+      const cursorPos = timestampedLine.indexOf(timestamp) + timestamp.length;
+      editor.setCursor({ line: cursor.line, ch: cursorPos });
       return;
     }
 
